@@ -15,7 +15,13 @@ import {
   getMint,
   TOKEN_PROGRAM_ID,
 } from '@solana/spl-token';
-import { type CreateInput, type Member, type Round, validateRules } from '../domain/round';
+import {
+  type CreateInput,
+  type Member,
+  type Round,
+  hasWithdrawableFunds,
+  validateRules,
+} from '../domain/round';
 import {
   coder,
   createInstruction,
@@ -275,6 +281,16 @@ export class RoundClient {
   ) {
     await this.verifyDeployment();
     const round = await this.fetchRound(id, owner.toBase58()); // Reject foreign programs/mints before signing.
+    if (action === 'withdraw') {
+      const member = round.members.find((m) => m.wallet === owner.toBase58());
+      if (!member) throw new UserFacingError('You are not a member of this ROUND.');
+      if (member.withdrawn)
+        throw new UserFacingError('Your savings and commitment lock have already been returned.');
+      if (!hasWithdrawableFunds(member))
+        throw new UserFacingError(
+          'Nothing to withdraw. You did not deposit USDC or lock SKR in this ROUND.',
+        );
+    }
     if (action !== 'withdraw') {
       const funds = await this.balances(owner);
       if (action === 'contribute' && funds.savings < round.amount)

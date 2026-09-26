@@ -28,6 +28,10 @@ export function simulationMessage(logs: string[] | null | undefined, failure: un
   const detail = (logs ?? []).join(' ');
   const rules: [RegExp, string][] = [
     [
+      /NothingToWithdraw|No savings or commitment lock/i,
+      'Nothing to withdraw. You did not deposit USDC or lock SKR in this ROUND.',
+    ],
+    [
       /AlreadyPaid|period has already been paid/i,
       'You already contributed for this period. Your next payment opens in the next period.',
     ],

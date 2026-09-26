@@ -83,6 +83,7 @@ pub mod round {
         require!(Clock::get()?.unix_timestamp >= ctx.accounts.round.ends_at, RoundError::Locked);
         require!(!ctx.accounts.member.withdrawn, RoundError::AlreadyWithdrawn);
         let member = &ctx.accounts.member;
+        require!(member.deposited > 0 || member.bond_deposited > 0, RoundError::NothingToWithdraw);
         let round_key = ctx.accounts.round.key();
         let owner_key = ctx.accounts.owner.key();
         let bump = [member.bump];
@@ -212,6 +213,7 @@ pub enum RoundError {
     #[msg("This period has already been paid")] AlreadyPaid,
     #[msg("Savings remain locked until the end time")] Locked,
     #[msg("Savings have already been returned")] AlreadyWithdrawn,
+    #[msg("No savings or commitment lock to withdraw")] NothingToWithdraw,
 }
 
 #[cfg(test)]

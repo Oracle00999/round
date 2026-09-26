@@ -22,6 +22,8 @@ export type Round = {
   color: string;
 };
 export type CreateInput = Omit<Round, 'members' | 'id' | 'creator'>;
+export const hasWithdrawableFunds = (member: Member) =>
+  !member.withdrawn && (member.deposited > 0 || member.bond > 0);
 export const UNIT = 1_000_000;
 export const nowSeconds = () => Math.floor(Date.now() / 1000);
 export const endsAt = (round: Round) => round.startsAt + round.periodSeconds * round.periods;
@@ -113,6 +115,10 @@ export function withdraw(round: Round, wallet: string, now: number): Round {
   if (!member) throw new UserFacingError('You are not a member of this ROUND.');
   if (member.withdrawn)
     throw new UserFacingError('Your savings and commitment lock have already been returned.');
+  if (!hasWithdrawableFunds(member))
+    throw new UserFacingError(
+      'Nothing to withdraw. You did not deposit USDC or lock SKR in this ROUND.',
+    );
   return {
     ...round,
     members: round.members.map((m) => (m.wallet !== wallet ? m : { ...m, withdrawn: true })),

@@ -62,3 +62,17 @@ it('rejects counterfeit mainnet mints before any RPC call', async () => {
   ).rejects.toThrow('official USDC and SKR');
   expect(rpc.getGenesisHash).not.toHaveBeenCalled();
 });
+
+it('blocks an empty withdrawal before asking the wallet to sign', async () => {
+  const owner = Keypair.generate().publicKey;
+  const client = new RoundClient({} as Connection, config());
+  vi.spyOn(client, 'verifyDeployment').mockResolvedValue(undefined);
+  vi.spyOn(client, 'fetchRound').mockResolvedValue({
+    members: [{ wallet: owner.toBase58(), deposited: 0, bond: 0, withdrawn: false }],
+  } as any);
+  const submit = vi.fn();
+  await expect(
+    client.act(Keypair.generate().publicKey.toBase58(), owner, 'withdraw', submit),
+  ).rejects.toThrow('Nothing to withdraw');
+  expect(submit).not.toHaveBeenCalled();
+});

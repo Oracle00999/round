@@ -76,3 +76,15 @@ describe('financial rules', () => {
     expect(() => join(full, 'c', 'Cam', 900)).toThrow('full');
   });
 });
+
+it('blocks an empty withdrawal but permits an SKR-only refund', () => {
+  const empty = join({ ...base(), bond: 0 }, 'a', 'Ada', 900);
+  expect(() => withdraw(empty, 'a', 1180)).toThrow('Nothing to withdraw');
+  expect(empty.members[0].withdrawn).toBe(false);
+  const bonded = join(base(), 'a', 'Ada', 900);
+  expect(withdraw(bonded, 'a', 1180).members[0]).toMatchObject({
+    deposited: 0,
+    bond: 100_000_000,
+    withdrawn: true,
+  });
+});

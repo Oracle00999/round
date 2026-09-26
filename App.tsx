@@ -21,6 +21,7 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Feather } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
+import { LaunchAnimation } from './src/components/LaunchAnimation';
 import { Onboarding } from './src/components/Onboarding';
 import { Avatar, Button, Card, Pill, Progress, ui } from './src/components/ui';
 import { colors as c } from './src/theme';
@@ -28,6 +29,7 @@ import {
   CreateInput,
   endsAt,
   isComplete,
+  hasWithdrawableFunds,
   money,
   nowSeconds,
   parseAmount,
@@ -83,7 +85,11 @@ function goalIcon(name: string): React.ComponentProps<typeof Feather>['name'] {
 }
 
 export default function App() {
-  return <Onboarding>{(replay) => <RoundApp onShowIntro={replay} />}</Onboarding>;
+  return (
+    <LaunchAnimation>
+      <Onboarding>{(replay) => <RoundApp onShowIntro={replay} />}</Onboarding>
+    </LaunchAnimation>
+  );
 }
 
 function RoundApp({ onShowIntro }: { onShowIntro: () => void }) {
@@ -890,7 +896,11 @@ function SavingsDetail({
     : m.withdrawn
       ? 'Savings returned'
       : phase === 'Ended'
-        ? `Withdraw ${money(m.deposited)} USDC${m.bond ? ' + SKR' : ''}`
+        ? !hasWithdrawableFunds(m)
+          ? 'Nothing to withdraw'
+          : m.deposited === 0
+            ? `Withdraw ${money(m.bond)} SKR`
+            : `Withdraw ${money(m.deposited)} USDC${m.bond ? ' + SKR' : ''}`
         : phase === 'Upcoming'
           ? `Starts ${date(r.startsAt)}`
           : paid
@@ -923,7 +933,11 @@ function SavingsDetail({
       </View>
       <Text style={ui.body}>
         {phase === 'Ended'
-          ? 'The wait is over. Everything you saved is yours to withdraw.'
+          ? m?.withdrawn
+            ? 'Your savings and commitment lock have been returned.'
+            : m && !hasWithdrawableFunds(m)
+              ? 'This ROUND has ended. You did not deposit USDC or lock SKR, so there is nothing to withdraw.'
+              : 'The wait is over. Everything you saved is yours to withdraw.'
           : `Locked until ${dateTime(endsAt(r))}. Your money stays yours, even if you miss a contribution.`}
       </Text>
       {phase !== 'Ended' && (
@@ -950,7 +964,10 @@ function SavingsDetail({
         disabled={
           disabled ||
           (m
-            ? m.withdrawn || phase === 'Upcoming' || (phase === 'Active' && paid)
+            ? m.withdrawn ||
+              (phase === 'Ended' && !hasWithdrawableFunds(m)) ||
+              phase === 'Upcoming' ||
+              (phase === 'Active' && paid)
             : phase !== 'Upcoming')
         }
         onPress={() => onAction(!m ? 'join' : phase === 'Ended' ? 'withdraw' : 'contribute')}

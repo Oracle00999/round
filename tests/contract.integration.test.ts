@@ -251,13 +251,29 @@ describe('ROUND program — actual SBF token transfers', () => {
     expect(member(bob).paid_mask.toNumber()).toBe(0);
   });
 
-  it('allows a zero-bond member with no previous bond token account to join and withdraw', () => {
+  it('rejects empty withdrawals without marking the member withdrawn', () => {
     create({ ...input, bond: 0 });
     const newcomer = Keypair.generate();
     svm.airdrop(asAddress(newcomer.publicKey), lamports(5_000_000_000n));
     join(newcomer);
     time(1180);
+    fails(newcomer, withdrawInstructions(config, round, newcomer.publicKey), 'NothingToWithdraw');
+    expect(member(newcomer).withdrawn).toBe(false);
+  });
+
+  it('returns USDC without a bond or pre-existing bond token account', () => {
+    create({ ...input, bond: 0 });
+    const newcomer = Keypair.generate();
+    svm.airdrop(asAddress(newcomer.publicKey), lamports(5_000_000_000n));
+    fund(newcomer, config.savingsMint);
+    join(newcomer);
+    time(1000);
+    pay(newcomer);
+    time(1180);
     claim(newcomer);
+    const accounts = memberAccounts(config, round, newcomer.publicKey);
+    expect(balance(accounts.owner_savings)).toBe(1_000_000_000n);
+    expect(balance(accounts.savings_vault)).toBe(0n);
     expect(member(newcomer).withdrawn).toBe(true);
   });
 

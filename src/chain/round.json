@@ -373,6 +373,11 @@
       "code": 6009,
       "name": "AlreadyWithdrawn",
       "msg": "Savings have already been returned"
+    },
+    {
+      "code": 6010,
+      "name": "NothingToWithdraw",
+      "msg": "No savings or commitment lock to withdraw"
     }
   ],
   "types": [
