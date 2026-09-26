@@ -1,0 +1,568 @@
+{
+  "address": "H2TwAXbeHpFadykMkrjpfEnhTTapTQ9gWiXs31tKh3Gw",
+  "metadata": {
+    "name": "round",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Individual time-locked savings with group accountability"
+  },
+  "instructions": [
+    {
+      "name": "contribute",
+      "discriminator": [82, 33, 68, 131, 32, 0, 205, 95],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true,
+          "relations": ["member"]
+        },
+        {
+          "name": "round",
+          "relations": ["member"]
+        },
+        {
+          "name": "member",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [109, 101, 109, 98, 101, 114]
+              },
+              {
+                "kind": "account",
+                "path": "round"
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "savings_mint",
+          "relations": ["round"]
+        },
+        {
+          "name": "savings_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [115, 97, 118, 105, 110, 103, 115]
+              },
+              {
+                "kind": "account",
+                "path": "member"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner_savings",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "create_round",
+      "discriminator": [229, 218, 236, 169, 231, 80, 134, 112],
+      "accounts": [
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "round",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [114, 111, 117, 110, 100]
+              },
+              {
+                "kind": "account",
+                "path": "creator"
+              },
+              {
+                "kind": "arg",
+                "path": "nonce"
+              }
+            ]
+          }
+        },
+        {
+          "name": "savings_mint"
+        },
+        {
+          "name": "bond_mint"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "nonce",
+          "type": "u64"
+        },
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "RoundArgs"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "join_round",
+      "discriminator": [191, 222, 86, 25, 234, 174, 157, 249],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "round",
+          "writable": true
+        },
+        {
+          "name": "member",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [109, 101, 109, 98, 101, 114]
+              },
+              {
+                "kind": "account",
+                "path": "round"
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "savings_mint",
+          "relations": ["round"]
+        },
+        {
+          "name": "bond_mint",
+          "relations": ["round"]
+        },
+        {
+          "name": "savings_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [115, 97, 118, 105, 110, 103, 115]
+              },
+              {
+                "kind": "account",
+                "path": "member"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bond_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [98, 111, 110, 100]
+              },
+              {
+                "kind": "account",
+                "path": "member"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner_bond",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "withdraw",
+      "discriminator": [183, 18, 70, 156, 148, 109, 161, 34],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true,
+          "relations": ["member"]
+        },
+        {
+          "name": "round",
+          "relations": ["member"]
+        },
+        {
+          "name": "member",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [109, 101, 109, 98, 101, 114]
+              },
+              {
+                "kind": "account",
+                "path": "round"
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "savings_mint",
+          "relations": ["round"]
+        },
+        {
+          "name": "bond_mint",
+          "relations": ["round"]
+        },
+        {
+          "name": "savings_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [115, 97, 118, 105, 110, 103, 115]
+              },
+              {
+                "kind": "account",
+                "path": "member"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bond_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [98, 111, 110, 100]
+              },
+              {
+                "kind": "account",
+                "path": "member"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner_savings",
+          "writable": true
+        },
+        {
+          "name": "owner_bond",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Member",
+      "discriminator": [54, 19, 162, 21, 29, 166, 17, 198]
+    },
+    {
+      "name": "SavingsRound",
+      "discriminator": [64, 68, 213, 128, 170, 15, 122, 107]
+    }
+  ],
+  "events": [
+    {
+      "name": "ContributionMade",
+      "discriminator": [81, 218, 72, 109, 93, 96, 131, 199]
+    },
+    {
+      "name": "SavingsReturned",
+      "discriminator": [95, 27, 208, 245, 245, 242, 3, 35]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "InvalidRules",
+      "msg": "Invalid immutable ROUND rules"
+    },
+    {
+      "code": 6001,
+      "name": "InvalidMint",
+      "msg": "Savings and commitment mints must differ"
+    },
+    {
+      "code": 6002,
+      "name": "Overflow",
+      "msg": "Arithmetic overflow"
+    },
+    {
+      "code": 6003,
+      "name": "JoiningClosed",
+      "msg": "Joining closes at the start time"
+    },
+    {
+      "code": 6004,
+      "name": "Full",
+      "msg": "The ROUND is full"
+    },
+    {
+      "code": 6005,
+      "name": "NotStarted",
+      "msg": "This ROUND has not started"
+    },
+    {
+      "code": 6006,
+      "name": "Ended",
+      "msg": "This ROUND has ended"
+    },
+    {
+      "code": 6007,
+      "name": "AlreadyPaid",
+      "msg": "This period has already been paid"
+    },
+    {
+      "code": 6008,
+      "name": "Locked",
+      "msg": "Savings remain locked until the end time"
+    },
+    {
+      "code": 6009,
+      "name": "AlreadyWithdrawn",
+      "msg": "Savings have already been returned"
+    }
+  ],
+  "types": [
+    {
+      "name": "ContributionMade",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "round",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "period",
+            "type": "u8"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Member",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "round",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "deposited",
+            "type": "u64"
+          },
+          {
+            "name": "bond_deposited",
+            "type": "u64"
+          },
+          {
+            "name": "paid_mask",
+            "type": "u64"
+          },
+          {
+            "name": "withdrawn",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RoundArgs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "bond_amount",
+            "type": "u64"
+          },
+          {
+            "name": "period_seconds",
+            "type": "i64"
+          },
+          {
+            "name": "periods",
+            "type": "u8"
+          },
+          {
+            "name": "starts_at",
+            "type": "i64"
+          },
+          {
+            "name": "max_members",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SavingsReturned",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "round",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "savings",
+            "type": "u64"
+          },
+          {
+            "name": "bond",
+            "type": "u64"
+          },
+          {
+            "name": "completed",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SavingsRound",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "nonce",
+            "type": "u64"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "savings_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "bond_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "bond_amount",
+            "type": "u64"
+          },
+          {
+            "name": "period_seconds",
+            "type": "i64"
+          },
+          {
+            "name": "periods",
+            "type": "u8"
+          },
+          {
+            "name": "starts_at",
+            "type": "i64"
+          },
+          {
+            "name": "ends_at",
+            "type": "i64"
+          },
+          {
+            "name": "max_members",
+            "type": "u8"
+          },
+          {
+            "name": "member_count",
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    }
+  ]
+}

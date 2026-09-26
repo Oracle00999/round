@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "ROUND",
+    "slug": "round-mobile",
+    "scheme": "round",
+    "version": "0.4.5",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#F8F8F2",
+    "android": {
+      "package": "app.round.savings",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "data": [
+            {
+              "scheme": "round",
+              "host": "join"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ],
+      "versionCode": 20
+    },
+    "web": {
+      "bundler": "metro",
+      "name": "ROUND — Save together"
+    },
+    "plugins": [
+      "expo-dev-client",
+      "expo-notifications"
+    ]
+  }
+}

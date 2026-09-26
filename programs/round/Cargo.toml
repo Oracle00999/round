@@ -1,0 +1,21 @@
+[package]
+name = "round"
+version = "0.1.0"
+edition = "2021"
+description = "Individual time-locked savings with group accountability"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "round"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+
+[dependencies]
+anchor-lang = "=0.32.2"
+anchor-spl = { version = "=0.32.2", features = ["token"] }

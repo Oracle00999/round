@@ -1,0 +1,16 @@
+node_modules/
+.expo/
+dist/
+dist-android/
+web-build/
+target/
+.env
+.local/
+.tooling/
+android/
+ios/
+*.log
+*.keystore
+*.jks
+artifacts/*.apk
+.DS_Store
