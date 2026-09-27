@@ -13,13 +13,13 @@ Android-first group savings: each member saves their own USDC, contributions sta
 - Mobile Wallet Adapter signing for creation, joining, contributions, and withdrawals on devnet.
 - A Rust-generated contract interface, program/mint validation, confirmed account reads, cross-wallet invitation lookup, and automatic creation of missing token accounts.
 - Pending transaction persistence and signature reconciliation: RPC timeouts never trigger automatic duplicate payments.
-- QR invitations, Android sharing, network-labelled `round://join/<id>?network=devnet` links, and locally scheduled reminders.
+- QR invitations, a link-only Copy link action, Android sharing, network-labelled `round://join/<id>?network=devnet` links, and locally scheduled reminders.
 - A compiled Anchor SBF program with immutable rules, member-specific vaults, one payment per period, and independent full refunds at expiry.
 - Savings-rule, invitation, confirmation-recovery, and real SBF transaction tests.
 
-The program passes 9 LiteSVM transaction tests using actual SPL token transfers. The app's RPC client also passes a full two-wallet lifecycle against a local validator: create/join, contribute, reject an early withdrawal, wait for expiry, and refund complete/incomplete members independently. The full automated suite currently has 42 passing tests.
+The program passes 12 LiteSVM transaction tests using actual SPL token transfers. The app's RPC client also passes a full two-wallet lifecycle against a local validator: create/join, contribute, reject an early withdrawal, wait for expiry, and refund complete/incomplete members independently. The latest local automated run for v0.4.18 passed 70 tests across 16 files, including those 12 program tests. These automated checks are separate from device testing and are not an independent security audit.
 
-**The program and both test-token mints are deployed on devnet.** The app verifies the deployment before enabling financial actions. Mainnet is disabled. Seeker wallet handoff, device notifications, SGT verification, and `.skr` resolution remain unverified or pending. Both configured devnet assets are custom test tokens with no monetary value; they are not issuer-backed USDC or mainnet SKR.
+**The program and both test-token mints are deployed on devnet.** The app verifies the deployment before enabling financial actions. Mainnet is disabled. Seeker Wallet connection and transaction approvals, contributions, withdrawals, and native notification delivery have been exercised on a physical Seeker. ROUND-start notification delivery was also verified on that device. SGT verification and app-side `.skr` resolution remain pending; a name shown by the wallet is not evidence that ROUND resolves it. Both configured devnet assets are custom test tokens with no monetary value; they are not issuer-backed USDC or mainnet SKR.
 
 ## Run the preview
 
@@ -38,7 +38,7 @@ Required: Android SDK, Java, connected Android device or emulator, and an MWA-co
 
 ## Build an installable APK
 
-The current test build is `artifacts/round-v0.4.15-devnet-arm64.apk`. APKs are excluded from source control.
+The current test build is `artifacts/round-v0.4.18-devnet-arm64.apk`. APKs are excluded from source control.
 
 Use Java 17 and set `ANDROID_HOME` to your SDK location:
 
@@ -75,11 +75,21 @@ npm run devnet:init
 npm run devnet:fund -- <seeker-wallet-public-address>
 ```
 
-The Seeker wallet also needs a little devnet SOL for fees/account rent. In the Android app, use **Connect wallet** (or **You → Connect Android wallet**). Creating a 30-second test ROUND leaves one minute for invitations before contributions start.
+The Seeker wallet also needs a little devnet SOL for fees/account rent. In the Android app, use **Home → Connect wallet** or **You → Connect Seeker wallet**. The short ROUND preset uses a two-minute joining window followed by two two-minute contribution periods. Creating a ROUND joins the creator; the first savings contribution is paid separately after the start. Any enabled commitment bond is deposited during creation or joining.
 
 ## Device testing
 
-Connect a devnet-capable Android wallet, create a 30-second ROUND, approve the agreement, and wait for its start. Contribute once, check a second payment is blocked, then withdraw after expiry. Test cancelled wallet prompts, insufficient tokens, offline refresh, and app restart with a pending payment. Clock shortcuts preview future screens with transactions disabled. Short ROUND presets use real 30-second devnet periods; no local contributions are available.
+For a short device test:
+
+1. Connect Seeker Wallet and select **You → Create a short ROUND**.
+2. Approve creation and wait for the two-minute joining window to close.
+3. Contribute during the first two-minute period; confirm another contribution in the same period is blocked.
+4. Contribute again when the second two-minute period opens.
+5. After both periods end, withdraw the savings and any commitment bond. The joining window and contribution periods total six minutes from transaction preparation; wallet approval and network delays can consume part of the joining window.
+
+The short preset uses real devnet transactions and on-chain time; it does not simulate payments or advance the clock. Existing rounds retain their original schedules, including older 30-second periods. Daily and weekly schedules are also available.
+
+Additional device checks include cancelled wallet prompts, insufficient tokens, offline refresh, and restarting with a pending payment. A two-account invite/join/contribute/withdraw demonstration on Seeker remains separate from the automated two-wallet local-validator lifecycle described above.
 
 Errors pass through a user-message boundary: known validation errors provide corrective steps; unknown native/RPC exceptions never appear verbatim. Run `npm run build && npm run test:web` to check the exported app renders without seeded balances or demo controls.
 
@@ -102,4 +112,8 @@ See [docs/BUILD_PLAN.md](docs/BUILD_PLAN.md) for implementation order and accept
 
 ### Presentation timing and notifications
 
-New short rounds use two 30-second periods after a one-minute joining window. Existing rounds keep their original schedule. Enable reminders in each ROUND on Android; contribution openings and unlock time are scheduled locally. The profile includes a five-second test notification. Allow notification permission when prompted. Foreground display is enabled; Android settings can delay delivery. Browser notifications and remote push messages are not implemented. Device delivery remains to be checked when Seeker reconnects.
+New short rounds use a two-minute joining window and two two-minute contribution periods. Existing rounds keep their original schedule.
+
+Creating or joining a ROUND schedules local start, contribution-window, and unlock reminders, subject to device permissions. Confirmed actions also produce receipt notifications. **Enable reminders** in a ROUND can schedule its reminders again. Allow notification permission when prompted; **You → Reminder timing settings** opens Android's precise-alarm settings.
+
+Notification delivery, including the ROUND-start alert, has been verified on the test Seeker. Foreground display is enabled, but permissions and Android settings can still affect delivery on other devices. Browser notifications and remote push messages are not implemented.

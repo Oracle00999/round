@@ -1,3 +1,4 @@
+import { copyInviteLink } from './src/services/clipboard';
 import { Skeleton, RoundSkeletons, SummarySkeleton } from './src/components/Skeleton';
 import {
   NETWORK,
@@ -80,7 +81,9 @@ const cadence = (r: Round) =>
         ? '30 seconds'
         : r.periodSeconds === 180
           ? '3 minutes'
-          : 'minute';
+          : r.periodSeconds === 120
+            ? '2 minutes'
+            : 'minute';
 
 function goalIcon(name: string): React.ComponentProps<typeof Feather>['name'] {
   if (/laptop|computer|tech/i.test(name)) return 'monitor';
@@ -105,8 +108,18 @@ function RoundApp({ onShowIntro }: { onShowIntro: () => void }) {
   const [creating, setCreating] = useState(false);
   const [quickTest, setQuickTest] = useState(false);
   const [invite, setInvite] = useState<Round | null>(null);
+  const [inviteCopied, setInviteCopied] = useState(false);
+  useEffect(() => setInviteCopied(false), [invite]);
   const [joinOpen, setJoinOpen] = useState(false);
   const [joinId, setJoinId] = useState('');
+  const openJoinForm = () => {
+    setJoinId('');
+    setJoinOpen(true);
+  };
+  const closeJoinForm = () => {
+    setJoinOpen(false);
+    setJoinId('');
+  };
   const [wallet, setWallet] = useState<string | null>(null);
   const network = useDevnet(wallet, true);
   const [busy, setBusy] = useState(false);
@@ -472,7 +485,7 @@ function RoundApp({ onShowIntro }: { onShowIntro: () => void }) {
                   <View pointerEvents="none" style={s.orbitOne} />
                   <View pointerEvents="none" style={s.orbitTwo} />
                 </View>
-                <Pressable style={s.communityCard} onPress={() => setJoinOpen(true)}>
+                <Pressable style={s.communityCard} onPress={openJoinForm}>
                   <View style={s.communityArt}>
                     <View style={s.miniOrbit} />
                     <Feather name="users" size={32} color={c.ink} />
@@ -572,7 +585,7 @@ function RoundApp({ onShowIntro }: { onShowIntro: () => void }) {
                     <Text style={s.eyebrow}>MAKE ROOM FOR YOUR GOALS</Text>
                     <Text style={ui.title}>{showPrevious ? 'Previous rounds' : 'Your rounds'}</Text>
                   </View>
-                  <Pressable onPress={() => setJoinOpen(true)}>
+                  <Pressable onPress={openJoinForm}>
                     <Feather name="link" size={22} color={c.ink} />
                   </Pressable>
                 </View>
@@ -745,8 +758,8 @@ function RoundApp({ onShowIntro }: { onShowIntro: () => void }) {
                     <Text style={ui.heading}>A shorter ROUND</Text>
                   </View>
                   <Text style={ui.body}>
-                    Start in 30 seconds, make two contributions one minute apart, and unlock after
-                    two minutes and 30 seconds.
+                    Start in 2 minutes, make two contributions two minutes apart, and unlock after 6
+                    minutes.
                   </Text>
                   <Button
                     icon="clock"
@@ -843,6 +856,19 @@ function RoundApp({ onShowIntro }: { onShowIntro: () => void }) {
                 {invitationLink(invite.id, NETWORK)}
               </Text>
               <Button
+                secondary
+                title={inviteCopied ? 'Link copied' : 'Copy link'}
+                icon={inviteCopied ? 'check' : 'copy'}
+                onPress={async () => {
+                  try {
+                    await copyInviteLink(invitationLink(invite.id, NETWORK));
+                    setInviteCopied(true);
+                  } catch (error) {
+                    showError(error);
+                  }
+                }}
+              />
+              <Button
                 title="Share invite"
                 icon="share-2"
                 onPress={async () => {
@@ -861,7 +887,7 @@ function RoundApp({ onShowIntro }: { onShowIntro: () => void }) {
             </>
           )}
         </Sheet>
-        <Sheet visible={joinOpen} onClose={() => setJoinOpen(false)} title="Find your people.">
+        <Sheet visible={joinOpen} onClose={closeJoinForm} title="Find your people.">
           <Text style={ui.body}>
             Paste a ROUND invitation to review the agreement before joining.
           </Text>
@@ -885,7 +911,7 @@ function RoundApp({ onShowIntro }: { onShowIntro: () => void }) {
                     'This invitation uses a different Solana network. Open it in a ROUND build for that network.',
                   );
                 const item = await network.lookup(parsed.id);
-                setJoinOpen(false);
+                closeJoinForm();
                 setSelected(item.id);
               } catch (error) {
                 showError(error);
@@ -1120,7 +1146,7 @@ function CreateForm({
   const [name, setName] = useState('');
   const [amount, setAmount] = useState(quickTest ? '1' : '20');
   const [periods, setPeriods] = useState(quickTest ? '2' : '5');
-  const [frequency, setFrequency] = useState(quickTest ? 60 : 604800);
+  const [frequency, setFrequency] = useState(quickTest ? 120 : 604800);
   const [bond, setBond] = useState(false);
   const [bondAmount, setBondAmount] = useState('100');
   const [error, setError] = useState('');
@@ -1167,13 +1193,13 @@ function CreateForm({
         {[
           { label: 'Weekly', value: 604800 },
           { label: 'Daily', value: 86400 },
-          { label: '1 minute', value: 60 },
+          { label: '2 minutes', value: 120 },
         ].map((item) => (
           <Pressable
             key={item.value}
             onPress={() => {
               setFrequency(item.value);
-              if (item.value === 60) setPeriods('2');
+              if (item.value === 120) setPeriods('2');
             }}
             style={[
               s.choice,
@@ -1208,7 +1234,7 @@ function CreateForm({
       <Card style={{ backgroundColor: c.soft }}>
         <Text style={s.memberName}>Everyone keeps what they save.</Text>
         <Text style={ui.body}>
-          Up to 8 members. Starts {frequency === 60 ? 'in 30 seconds' : 'tomorrow'}. Joining closes
+          Up to 8 members. Starts {frequency === 120 ? 'in 2 minutes' : 'tomorrow'}. Joining closes
           at the start. Each period accepts one payment; missed periods cannot be made up. USDC and
           SKR stay locked until the end.
         </Text>
@@ -1239,7 +1265,7 @@ function CreateForm({
               amount: parseAmount(amount),
               periods: Number(periods),
               periodSeconds: frequency,
-              startsAt: now + (frequency === 60 ? 30 : 86400),
+              startsAt: now + (frequency === 120 ? 120 : 86400),
               maxMembers: 8,
               bond: bond ? parseAmount(bondAmount) : 0,
               emoji: '',

@@ -3,7 +3,7 @@
     "name": "ROUND",
     "slug": "round-mobile",
     "scheme": "round",
-    "version": "0.4.15",
+    "version": "0.4.18",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "backgroundColor": "#F8F8F2",
@@ -21,7 +21,7 @@
           "category": ["BROWSABLE", "DEFAULT"]
         }
       ],
-      "versionCode": 30,
+      "versionCode": 33,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#F8F8F2",
@@ -32,7 +32,12 @@
       "bundler": "metro",
       "name": "ROUND — Save together"
     },
-    "plugins": ["expo-dev-client", "expo-notifications", "./plugins/with-reminder-timing"],
+    "plugins": [
+      "expo-dev-client",
+      "expo-notifications",
+      "./plugins/with-reminder-timing",
+      "./plugins/with-clipboard"
+    ],
     "icon": "./assets/icon.png"
   }
 }
