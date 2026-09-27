@@ -11,5 +11,12 @@ export function reminderPlan(round: Round, now: number) {
     title: 'Your ROUND has finished',
     body: `Your savings in ${round.name} are ready to withdraw.`,
   });
+  // A confirmation can finish after the start. Catch up only while the first window is open.
+  if (
+    now >= round.startsAt &&
+    now < Math.min(endsAt(round), round.startsAt + round.periodSeconds)
+  ) {
+    events[0] = { ...events[0], at: now + 1 };
+  }
   return events.filter((event) => event.at > now);
 }

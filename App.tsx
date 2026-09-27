@@ -1,3 +1,4 @@
+import { Skeleton, RoundSkeletons, SummarySkeleton } from './src/components/Skeleton';
 import {
   NETWORK,
   NETWORK_LABEL,
@@ -41,9 +42,14 @@ import {
 } from './src/domain/round';
 import { userMessage, UserFacingError } from './src/services/errors';
 import { connectWallet } from './src/services/wallet';
-import { scheduleReminders, initializeNotifications } from './src/services/reminders';
+import {
+  scheduleReminders,
+  initializeNotifications,
+  openReminderSettings,
+} from './src/services/reminders';
 import { useDevnet } from './src/hooks/useDevnet';
 import { shortAddress } from './src/chain/client';
+import { contributionCountdown } from './src/domain/clock';
 import { invitationLink, parseInvitation } from './src/domain/invites';
 
 type Tab = 'home' | 'rounds' | 'history' | 'profile';
@@ -94,6 +100,7 @@ export default function App() {
 
 function RoundApp({ onShowIntro }: { onShowIntro: () => void }) {
   const [tab, setTab] = useState<Tab>('home');
+  const [showPrevious, setShowPrevious] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [quickTest, setQuickTest] = useState(false);
@@ -168,6 +175,12 @@ function RoundApp({ onShowIntro }: { onShowIntro: () => void }) {
       roundPhase(r, now) === 'Active' &&
       !r.members.find((m) => m.wallet === viewer)!.paidPeriods.includes(periodIndex(r, now)),
   );
+  const currentRounds = mine.filter(
+    (r) =>
+      roundPhase(r, now) !== 'Ended' ||
+      hasWithdrawableFunds(r.members.find((m) => m.wallet === viewer)!),
+  );
+  const previousRounds = mine.filter((r) => !currentRounds.includes(r));
   const finished = mine.filter((r) => roundPhase(r, now) === 'Ended');
 
   const header = (
@@ -215,7 +228,7 @@ function RoundApp({ onShowIntro }: { onShowIntro: () => void }) {
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
-            {!wallet && (
+            {!wallet && tab === 'home' && !active && (
               <Card style={{ padding: 14, gap: 8 }}>
                 <Text style={s.small}>Connect your wallet to start saving together.</Text>
                 <Button
@@ -242,8 +255,10 @@ function RoundApp({ onShowIntro }: { onShowIntro: () => void }) {
                     {network.error
                       ? 'CONNECTION NEEDS ATTENTION'
                       : network.balances
-                        ? 'CONNECTED'
-                        : 'CONNECTING…'}
+                        ? network.refreshNotice
+                          ? 'REFRESH DELAYED'
+                          : 'CONNECTED'
+                        : 'WALLET CONNECTED · LOADING…'}
                   </Pill>
                   <Pressable disabled={working} onPress={() => network.refresh().catch(showError)}>
                     <Feather name="refresh-cw" size={18} color={c.ink} />
@@ -254,6 +269,9 @@ function RoundApp({ onShowIntro }: { onShowIntro: () => void }) {
                   <Text accessibilityRole="alert" style={ui.body}>
                     {network.error}
                   </Text>
+                ) : null}
+                {network.refreshNotice ? (
+                  <Text style={s.small}>{network.refreshNotice}</Text>
                 ) : null}
                 {network.pending && (
                   <>
@@ -329,6 +347,7 @@ function RoundApp({ onShowIntro }: { onShowIntro: () => void }) {
                   now={detailNow}
                   viewer={viewer}
                   disabled={working || !network.canTransact}
+                  disabledReason={network.status || network.readinessMessage}
                   onAction={(action) => mutate(active, action)}
                 />
                 <View style={ui.row}>
@@ -420,7 +439,13 @@ function RoundApp({ onShowIntro }: { onShowIntro: () => void }) {
                     </View>
                   </View>
                   <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10 }}>
-                    <Text style={s.balance}>{network.balances ? money(balance) : '—'}</Text>
+                    {network.roundsLoading ? (
+                      <Skeleton width={150} height={48} dark />
+                    ) : (
+                      <Text style={s.balance}>
+                        {wallet && !network.roundsUnavailable ? money(balance) : '—'}
+                      </Text>
+                    )}
                     <Text style={s.currency}>USDC</Text>
                   </View>
                   <Text style={s.balanceHint}>Small steps. Real progress.</Text>
@@ -428,9 +453,21 @@ function RoundApp({ onShowIntro }: { onShowIntro: () => void }) {
                   <View style={ui.row}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                       <View style={s.limeDot} />
-                      <Text style={s.balanceFoot}>{activeCount} ongoing rounds</Text>
+                      {network.roundsLoading ? (
+                        <Skeleton width={120} dark />
+                      ) : (
+                        <Text style={s.balanceFoot}>
+                          {network.roundsUnavailable ? '—' : activeCount} ongoing rounds
+                        </Text>
+                      )}
                     </View>
-                    <Text style={s.balanceFoot}>{mine.length} shared goals</Text>
+                    {network.roundsLoading ? (
+                      <Skeleton width={100} dark />
+                    ) : (
+                      <Text style={s.balanceFoot}>
+                        {network.roundsUnavailable ? '—' : mine.length} shared goals
+                      </Text>
+                    )}
                   </View>
                   <View pointerEvents="none" style={s.orbitOne} />
                   <View pointerEvents="none" style={s.orbitTwo} />
@@ -464,16 +501,29 @@ function RoundApp({ onShowIntro }: { onShowIntro: () => void }) {
                 )}
                 <View style={ui.row}>
                   <Text style={ui.heading}>
-                    Your rounds <Text style={s.count}>{mine.length}</Text>
+                    Your rounds{' '}
+                    <Text style={s.count}>
+                      {network.roundsUnavailable ? '' : currentRounds.length}
+                    </Text>
                   </Text>
                   <Pressable
-                    onPress={() => (wallet ? setCreating(true) : setTab('profile'))}
+                    disabled={working}
+                    onPress={() => {
+                      setQuickTest(false);
+                      setCreating(true);
+                    }}
                     hitSlop={10}
                   >
                     <Text style={s.link}>+ Create new</Text>
                   </Pressable>
                 </View>
-                {mine.length === 0 && (
+                {network.roundsLoading && <RoundSkeletons />}
+                {network.roundsUnavailable && !network.roundsLoading && (
+                  <Text style={ui.body}>
+                    Your rounds couldn’t load. Use the refresh button above to try again.
+                  </Text>
+                )}
+                {!network.roundsUnavailable && currentRounds.length === 0 && (
                   <Card>
                     <Text style={ui.heading}>Your next goal starts here.</Text>
                     <Text style={ui.body}>
@@ -482,22 +532,34 @@ function RoundApp({ onShowIntro }: { onShowIntro: () => void }) {
                     </Text>
                     <Button
                       title="Start a ROUND"
-                      disabled={working || !network.canTransact}
-                      onPress={() => setCreating(true)}
+                      disabled={working}
+                      onPress={() => {
+                        setQuickTest(false);
+                        setCreating(true);
+                      }}
                     />
                   </Card>
                 )}
-                {mine
-                  .filter((r) => roundPhase(r, now) !== 'Ended')
-                  .map((r) => (
-                    <RoundCard
-                      key={r.id}
-                      round={r}
-                      now={now}
-                      viewer={viewer}
-                      onPress={() => setSelected(r.id)}
-                    />
-                  ))}
+                {currentRounds.map((r) => (
+                  <RoundCard
+                    key={r.id}
+                    round={r}
+                    now={now}
+                    viewer={viewer}
+                    onPress={() => setSelected(r.id)}
+                  />
+                ))}
+                {previousRounds.length > 0 && (
+                  <Button
+                    secondary
+                    title="View previous rounds"
+                    icon="archive"
+                    onPress={() => {
+                      setShowPrevious(true);
+                      setTab('rounds');
+                    }}
+                  />
+                )}
                 <View style={s.footerNote}>
                   <Feather name="shield" size={13} color={c.muted} />
                   <Text style={s.small}>No treasurer. No penalties. Just progress.</Text>
@@ -508,14 +570,27 @@ function RoundApp({ onShowIntro }: { onShowIntro: () => void }) {
                 <View style={ui.row}>
                   <View>
                     <Text style={s.eyebrow}>MAKE ROOM FOR YOUR GOALS</Text>
-                    <Text style={ui.title}>Your rounds</Text>
+                    <Text style={ui.title}>{showPrevious ? 'Previous rounds' : 'Your rounds'}</Text>
                   </View>
                   <Pressable onPress={() => setJoinOpen(true)}>
                     <Feather name="link" size={22} color={c.ink} />
                   </Pressable>
                 </View>
-                <Button title="+ Start a new ROUND" onPress={() => setCreating(true)} />
-                {mine.map((r) => (
+                <Button
+                  title="+ Start a new ROUND"
+                  disabled={working}
+                  onPress={() => {
+                    setQuickTest(false);
+                    setCreating(true);
+                  }}
+                />
+                {network.roundsLoading && <RoundSkeletons />}
+                {network.roundsUnavailable && !network.roundsLoading && (
+                  <Text style={ui.body}>
+                    Your rounds couldn’t load. Use the refresh button above to try again.
+                  </Text>
+                )}
+                {(showPrevious ? previousRounds : currentRounds).map((r) => (
                   <RoundCard
                     key={r.id}
                     round={r}
@@ -524,6 +599,12 @@ function RoundApp({ onShowIntro }: { onShowIntro: () => void }) {
                     onPress={() => setSelected(r.id)}
                   />
                 ))}
+                <Button
+                  secondary
+                  title={showPrevious ? 'View current rounds' : 'View previous rounds'}
+                  icon="archive"
+                  onPress={() => setShowPrevious(!showPrevious)}
+                />
               </>
             ) : tab === 'history' ? (
               <>
@@ -533,44 +614,57 @@ function RoundApp({ onShowIntro }: { onShowIntro: () => void }) {
                   An honest record of your savings journey. Incomplete rounds are part of the story,
                   too.
                 </Text>
-                <Card>
-                  <Rule label="Rounds finished" value={String(finished.length)} />
-                  <Rule
-                    label="Completed"
-                    value={String(
-                      finished.filter((r) =>
-                        isComplete(
-                          r,
-                          r.members.find((m) => m.wallet === viewer)!,
-                        ),
-                      ).length,
-                    )}
-                  />
-                  <Rule
-                    label="Incomplete"
-                    value={String(
-                      finished.filter(
-                        (r) =>
-                          !isComplete(
-                            r,
-                            r.members.find((m) => m.wallet === viewer)!,
-                          ),
-                      ).length,
-                    )}
-                  />
-                </Card>
-                {finished.length ? (
-                  finished.map((r) => (
-                    <RoundCard
-                      key={r.id}
-                      round={r}
-                      now={now}
-                      viewer={viewer}
-                      onPress={() => setSelected(r.id)}
-                    />
-                  ))
+                {network.roundsLoading ? (
+                  <>
+                    <SummarySkeleton label="Loading history summary" />
+                    <RoundSkeletons label="Loading history" />
+                  </>
+                ) : network.roundsUnavailable ? (
+                  <Text style={ui.body}>
+                    Your history couldn’t load. Use the refresh button above to try again.
+                  </Text>
                 ) : (
-                  <Text style={ui.body}>Your first chapter is still in progress.</Text>
+                  <>
+                    <Card>
+                      <Rule label="Rounds finished" value={String(finished.length)} />
+                      <Rule
+                        label="Completed"
+                        value={String(
+                          finished.filter((r) =>
+                            isComplete(
+                              r,
+                              r.members.find((m) => m.wallet === viewer)!,
+                            ),
+                          ).length,
+                        )}
+                      />
+                      <Rule
+                        label="Incomplete"
+                        value={String(
+                          finished.filter(
+                            (r) =>
+                              !isComplete(
+                                r,
+                                r.members.find((m) => m.wallet === viewer)!,
+                              ),
+                          ).length,
+                        )}
+                      />
+                    </Card>
+                    {finished.length ? (
+                      finished.map((r) => (
+                        <RoundCard
+                          key={r.id}
+                          round={r}
+                          now={now}
+                          viewer={viewer}
+                          onPress={() => setSelected(r.id)}
+                        />
+                      ))
+                    ) : (
+                      <Text style={ui.body}>Your first chapter is still in progress.</Text>
+                    )}
+                  </>
                 )}
               </>
             ) : (
@@ -617,6 +711,9 @@ function RoundApp({ onShowIntro }: { onShowIntro: () => void }) {
                           ? `Connected as ${shortAddress(wallet)}.`
                           : 'ROUND cannot connect right now. Please update the app and try again.'}
                       </Text>
+                      {network.balancesLoading && (
+                        <SummarySkeleton label="Loading wallet balances" />
+                      )}
                       {network.balances && (
                         <>
                           <Rule label="Available USDC" value={money(network.balances.savings)} />
@@ -636,19 +733,25 @@ function RoundApp({ onShowIntro }: { onShowIntro: () => void }) {
                     </>
                   )}
                 </Card>
+                <Button
+                  secondary
+                  title="Reminder timing settings"
+                  icon="clock"
+                  onPress={() => openReminderSettings().catch(showError)}
+                />
                 <Card style={{ backgroundColor: c.soft }}>
                   <View style={ui.row}>
                     <Feather name="fast-forward" size={24} color={c.ink} />
                     <Text style={ui.heading}>A shorter ROUND</Text>
                   </View>
                   <Text style={ui.body}>
-                    Start in two minutes, contribute every three minutes, and unlock after two
-                    periods.
+                    Start in 30 seconds, make two contributions one minute apart, and unlock after
+                    two minutes and 30 seconds.
                   </Text>
                   <Button
                     icon="clock"
                     title="Create a short ROUND"
-                    disabled={!network.canTransact || working}
+                    disabled={working}
                     onPress={() => {
                       setQuickTest(true);
                       setCreating(true);
@@ -710,7 +813,7 @@ function RoundApp({ onShowIntro }: { onShowIntro: () => void }) {
           <CreateForm
             key={quickTest ? 'quick' : 'regular'}
             quickTest={quickTest}
-            status={network.status || (network.busy ? 'Checking your ROUND…' : network.error)}
+            status={network.status || network.readinessMessage}
             now={now}
             disabled={working || !network.canTransact}
             onCreate={async (input) => {
@@ -880,12 +983,14 @@ function SavingsDetail({
   now,
   viewer,
   disabled,
+  disabledReason,
   onAction,
 }: {
   round: Round;
   now: number;
   viewer: string;
   disabled: boolean;
+  disabledReason?: string;
   onAction: (action: 'join' | 'contribute' | 'withdraw') => void;
 }) {
   const m = r.members.find((m) => m.wallet === viewer);
@@ -942,21 +1047,8 @@ function SavingsDetail({
       </Text>
       {phase !== 'Ended' && (
         <Rule
-          label={
-            phase === 'Upcoming'
-              ? 'Starts in'
-              : paid
-                ? 'Savings unlock in'
-                : 'This period closes in'
-          }
-          value={countdown(
-            (phase === 'Upcoming'
-              ? r.startsAt
-              : paid
-                ? endsAt(r)
-                : Math.min(endsAt(r), r.startsAt + (periodIndex(r, now) + 1) * r.periodSeconds)) -
-              now,
-          )}
+          label={contributionCountdown(r, now, !!paid).label}
+          value={countdown(contributionCountdown(r, now, !!paid).at - now)}
         />
       )}
       <Button
@@ -972,6 +1064,11 @@ function SavingsDetail({
         }
         onPress={() => onAction(!m ? 'join' : phase === 'Ended' ? 'withdraw' : 'contribute')}
       />
+      {disabled && disabledReason ? (
+        <Text style={ui.body} accessibilityLiveRegion="polite">
+          {disabledReason}
+        </Text>
+      ) : null}
     </Card>
   );
 }
@@ -1023,7 +1120,7 @@ function CreateForm({
   const [name, setName] = useState('');
   const [amount, setAmount] = useState(quickTest ? '1' : '20');
   const [periods, setPeriods] = useState(quickTest ? '2' : '5');
-  const [frequency, setFrequency] = useState(quickTest ? 180 : 604800);
+  const [frequency, setFrequency] = useState(quickTest ? 60 : 604800);
   const [bond, setBond] = useState(false);
   const [bondAmount, setBondAmount] = useState('100');
   const [error, setError] = useState('');
@@ -1070,11 +1167,14 @@ function CreateForm({
         {[
           { label: 'Weekly', value: 604800 },
           { label: 'Daily', value: 86400 },
-          { label: '3 minutes', value: 180 },
+          { label: '1 minute', value: 60 },
         ].map((item) => (
           <Pressable
             key={item.value}
-            onPress={() => setFrequency(item.value)}
+            onPress={() => {
+              setFrequency(item.value);
+              if (item.value === 60) setPeriods('2');
+            }}
             style={[
               s.choice,
               frequency === item.value && { backgroundColor: c.lime, borderColor: c.lime },
@@ -1108,9 +1208,9 @@ function CreateForm({
       <Card style={{ backgroundColor: c.soft }}>
         <Text style={s.memberName}>Everyone keeps what they save.</Text>
         <Text style={ui.body}>
-          Up to 8 members. Starts {frequency === 180 ? 'in two minutes' : 'tomorrow'}. Joining
-          closes at the start. Each period accepts one payment; missed periods cannot be made up.
-          USDC and SKR stay locked until the end.
+          Up to 8 members. Starts {frequency === 60 ? 'in 30 seconds' : 'tomorrow'}. Joining closes
+          at the start. Each period accepts one payment; missed periods cannot be made up. USDC and
+          SKR stay locked until the end.
         </Text>
         <Text style={s.small}>
           Creating joins you to the ROUND. Your first USDC contribution is paid separately after it
@@ -1128,7 +1228,7 @@ function CreateForm({
         </Text>
       ) : null}
       <Button
-        title={status && disabled ? status : 'Create ROUND'}
+        title={disabled ? 'Create ROUND — waiting' : 'Create ROUND'}
         icon="plus"
         disabled={disabled}
         onPress={async () => {
@@ -1139,7 +1239,7 @@ function CreateForm({
               amount: parseAmount(amount),
               periods: Number(periods),
               periodSeconds: frequency,
-              startsAt: now + (frequency === 180 ? 120 : 86400),
+              startsAt: now + (frequency === 60 ? 30 : 86400),
               maxMembers: 8,
               bond: bond ? parseAmount(bondAmount) : 0,
               emoji: '',

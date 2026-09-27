@@ -23,8 +23,9 @@ describe('presentation reminders and timing', () => {
   it('schedules each opening and the actual unlock time', () => {
     expect(reminderPlan(round, 900).map((x) => x.at)).toEqual([1000, 1030, 1060]);
   });
-  it('never schedules old windows after re-enabling reminders', () => {
-    expect(reminderPlan(round, 1000).map((x) => x.at)).toEqual([1030, 1060]);
+  it('catches up the start only during its contribution window', () => {
+    expect(reminderPlan(round, 1000).map((x) => x.at)).toEqual([1001, 1030, 1060]);
+    expect(reminderPlan(round, 1031).map((x) => x.at)).toEqual([1060]);
     expect(reminderPlan(round, 1060)).toEqual([]);
   });
 });

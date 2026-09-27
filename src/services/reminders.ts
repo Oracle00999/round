@@ -1,5 +1,7 @@
 import { UserFacingError } from './errors';
-import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { NETWORK } from '../chain/network';
+import { NativeModules, Platform } from 'react-native';
 import { Round } from '../domain/round';
 import { reminderPlan } from '../domain/reminders';
 
@@ -52,15 +54,44 @@ export async function sendTestNotification() {
   });
 }
 
-export async function scheduleReminders(round: Round): Promise<number> {
+export async function openReminderSettings() {
+  if (Platform.OS !== 'android' || !NativeModules.ReminderTiming)
+    throw new UserFacingError('Update ROUND on your Android phone to enable precise reminders.');
+  await NativeModules.ReminderTiming.openSettings();
+}
+
+const scheduling = new Map<string, Promise<number>>();
+export function scheduleReminders(round: Round): Promise<number> {
+  const existing = scheduling.get(round.id);
+  if (existing) return existing;
+  const work = scheduleRoundReminders(round).finally(() => scheduling.delete(round.id));
+  scheduling.set(round.id, work);
+  return work;
+}
+async function scheduleRoundReminders(round: Round): Promise<number> {
   const Notifications = await notificationPermission();
+  if (!NativeModules.ReminderTiming || !(await NativeModules.ReminderTiming.canSchedule()))
+    throw new UserFacingError(
+      'Allow precise reminders in Reminder timing settings, then return and tap Enable reminders.',
+    );
+  const startKey = `round:${NETWORK}:start-alert:${round.id}`;
+  const startScheduled = await AsyncStorage.getItem(startKey);
+  const now = Math.floor(Date.now() / 1000);
   const existing = await Notifications.getAllScheduledNotificationsAsync();
   for (const item of existing)
-    if (item.content.data?.roundId === round.id && item.content.data?.kind !== 'receipt')
+    if (
+      item.content.data?.roundId === round.id &&
+      item.content.data?.kind !== 'receipt' &&
+      (item.content.title !== 'Your ROUND has started' || round.startsAt > now)
+    )
       await Notifications.cancelScheduledNotificationAsync(item.identifier);
   const plan = reminderPlan(round, Math.floor(Date.now() / 1000));
+  let count = 0;
   for (const item of plan) {
+    const isStart = item.title === 'Your ROUND has started';
+    if (isStart && startScheduled && round.startsAt <= now) continue;
     await Notifications.scheduleNotificationAsync({
+      identifier: `round:${NETWORK}:${round.id}:${isStart ? 'start' : item.at}`,
       content: {
         title: item.title,
         body: item.body,
@@ -73,8 +104,10 @@ export async function scheduleReminders(round: Round): Promise<number> {
         channelId: CHANNEL,
       },
     });
+    count++;
+    if (isStart) await AsyncStorage.setItem(startKey, 'scheduled');
   }
-  return plan.length;
+  return count;
 }
 
 export type ConfirmedAction = 'create' | 'join' | 'contribute' | 'withdraw';
@@ -103,10 +136,7 @@ export async function notifyConfirmed(action: ConfirmedAction, roundId: string, 
   await Notifications.scheduleNotificationAsync({
     identifier: `confirmed:${signature}`,
     content: { title, body, sound: 'default', data: { roundId, signature, kind: 'receipt' } },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-      seconds: 1,
-      channelId: CHANNEL,
-    },
+    // Receipts are immediate; do not consume a timed-alarm slot before the start alert.
+    trigger: { channelId: CHANNEL },
   });
 }

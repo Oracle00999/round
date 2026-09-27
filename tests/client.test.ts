@@ -76,3 +76,23 @@ it('blocks an empty withdrawal before asking the wallet to sign', async () => {
   ).rejects.toThrow('Nothing to withdraw');
   expect(submit).not.toHaveBeenCalled();
 });
+
+it('caches successful background verification but rechecks before payments', async () => {
+  const client = new RoundClient({} as Connection, config());
+  const check = vi.spyOn(client as any, 'checkDeployment').mockResolvedValue(undefined);
+  await Promise.all([client.verifyDeployment(false), client.verifyDeployment(false)]);
+  await client.verifyDeployment(false);
+  expect(check).toHaveBeenCalledTimes(1);
+  await client.verifyDeployment();
+  expect(check).toHaveBeenCalledTimes(2);
+});
+it('does not cache failed network verification', async () => {
+  const client = new RoundClient({} as Connection, config());
+  const check = vi
+    .spyOn(client as any, 'checkDeployment')
+    .mockRejectedValueOnce(new Error('429'))
+    .mockResolvedValue(undefined);
+  await expect(client.verifyDeployment(false)).rejects.toThrow('429');
+  await client.verifyDeployment(false);
+  expect(check).toHaveBeenCalledTimes(2);
+});

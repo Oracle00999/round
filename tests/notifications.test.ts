@@ -7,7 +7,13 @@ const mock = vi.hoisted(() => ({
   setNotificationHandler: vi.fn(),
   setNotificationChannelAsync: vi.fn(),
 }));
-vi.mock('react-native', () => ({ Platform: { OS: 'android' } }));
+vi.mock('react-native', () => ({
+  Platform: { OS: 'android' },
+  NativeModules: { ReminderTiming: { canSchedule: vi.fn().mockResolvedValue(true) } },
+}));
+vi.mock('@react-native-async-storage/async-storage', () => ({
+  default: { getItem: vi.fn().mockResolvedValue(null), setItem: vi.fn() },
+}));
 vi.mock('expo-notifications', () => ({
   ...mock,
   AndroidImportance: { HIGH: 4 },
@@ -57,4 +63,38 @@ it('schedules start, next payment and unlock without cancelling a pending receip
     'Your next contribution is open',
     'Your ROUND has finished',
   ]);
+});
+
+it('schedules a late start during the first window and remembers it to prevent duplicates', async () => {
+  const storage = (await import('@react-native-async-storage/async-storage')).default;
+  const round = {
+    id: 'late',
+    name: 'Late',
+    startsAt: Math.floor(Date.now() / 1000) - 5,
+    periodSeconds: 30,
+    periods: 2,
+  } as any;
+  await scheduleReminders(round);
+  expect(
+    mock.scheduleNotificationAsync.mock.calls.some(
+      ([x]) => x.content.title === 'Your ROUND has started',
+    ),
+  ).toBe(true);
+  expect(storage.setItem).toHaveBeenCalled();
+  vi.mocked(storage.getItem).mockResolvedValueOnce('scheduled');
+  mock.scheduleNotificationAsync.mockClear();
+  await scheduleReminders(round);
+  expect(
+    mock.scheduleNotificationAsync.mock.calls.some(
+      ([x]) => x.content.title === 'Your ROUND has started',
+    ),
+  ).toBe(false);
+});
+it('reports missing precise-alarm access rather than pretending timed reminders are enabled', async () => {
+  const { NativeModules } = await import('react-native');
+  NativeModules.ReminderTiming.canSchedule.mockResolvedValueOnce(false);
+  await expect(scheduleReminders({ id: 'no-access' } as any)).rejects.toThrow(
+    'Allow precise reminders',
+  );
+  expect(mock.scheduleNotificationAsync).not.toHaveBeenCalled();
 });

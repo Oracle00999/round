@@ -14,6 +14,8 @@ const PENDING_KEY = `round:${NETWORK}:pending:v1`;
 export function useDevnet(wallet: string | null, enabled: boolean) {
   const client = useMemo(() => configuredClient(), []);
   const [rounds, setRounds] = useState<Round[]>([]);
+  const [roundsOwner, setRoundsOwner] = useState<string | null>(null);
+  const [fetchingOwner, setFetchingOwner] = useState<string | null>(null);
   const [dataOwner, setDataOwner] = useState<string | null>(null);
   const [balances, setBalances] = useState<WalletBalances | null>(null);
   const [pending, setPending] = useState<PendingTransaction | null>(null);
@@ -21,6 +23,9 @@ export function useDevnet(wallet: string | null, enabled: boolean) {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
+  const [refreshNotice, setRefreshNotice] = useState('');
+  const loadedOwner = useRef<string | null>(null);
+  const refreshing = useRef<Promise<void> | null>(null);
   const [stale, setStale] = useState(true);
   const [offset, setOffset] = useState(0);
   const [lastSignature, setLastSignature] = useState<string | null>(null);
@@ -56,31 +61,65 @@ export function useDevnet(wallet: string | null, enabled: boolean) {
   }, []);
 
   const refresh = useCallback(async () => {
+    if (refreshing.current) {
+      await refreshing.current;
+      // A wallet switch must fetch its own data after an older request finishes.
+      if (loadedOwner.current === wallet) return;
+    }
     if (!client || !wallet)
       throw new UserFacingError('Connect a wallet and configure the deployment first.');
     const owner = wallet;
-    const [items, funds, clock] = await Promise.all([
-      client.myRounds(new PublicKey(owner)),
-      client.balances(new PublicKey(owner)),
-      client.chainTime(),
-    ]);
-    if (walletRef.current !== owner) return;
-    setRounds((previous) => [
-      ...items,
-      ...previous.filter(
-        (r) =>
-          !items.some((item) => item.id === r.id) && !r.members.some((m) => m.wallet === owner),
-      ),
-    ]);
-    setDataOwner(owner);
-    setBalances(funds);
-    setOffset(clock - Math.floor(Date.now() / 1000));
-    setStale(false);
-    setError('');
+    setFetchingOwner(owner);
+    const work = (async () => {
+      await client.verifyDeployment(false);
+      const results = await Promise.allSettled([
+        client.myRounds(new PublicKey(owner)).then((items) => {
+          if (walletRef.current !== owner) return;
+          setRoundsOwner(owner);
+          setRounds((previous) => [
+            ...items,
+            ...previous.filter(
+              (r) =>
+                !items.some((item) => item.id === r.id) &&
+                !r.members.some((m) => m.wallet === owner),
+            ),
+          ]);
+          setDataOwner(owner);
+        }),
+        client.balances(new PublicKey(owner)).then((funds) => {
+          if (walletRef.current === owner) {
+            setBalances(funds);
+            setDataOwner(owner);
+          }
+        }),
+        client.chainTime().then((clock) => {
+          if (walletRef.current === owner) setOffset(clock - Math.floor(Date.now() / 1000));
+        }),
+      ]);
+      const failure = results.find((result) => result.status === 'rejected');
+      if (failure?.status === 'rejected') throw failure.reason;
+      if (walletRef.current !== owner) return;
+      loadedOwner.current = owner;
+      setStale(false);
+      setError('');
+      setRefreshNotice('');
+    })();
+    refreshing.current = work;
+    try {
+      await work;
+    } finally {
+      if (refreshing.current === work) {
+        refreshing.current = null;
+        setFetchingOwner(null);
+      }
+    }
   }, [client, wallet]);
 
   useEffect(() => {
+    loadedOwner.current = null;
+    setRefreshNotice('');
     setRounds([]);
+    setRoundsOwner(null);
     setDataOwner(null);
     setBalances(null);
     setStale(true);
@@ -90,27 +129,54 @@ export function useDevnet(wallet: string | null, enabled: boolean) {
   useEffect(() => {
     if (!enabled || !client || !wallet) return;
     let cancelled = false;
+    let active = AppState.currentState !== 'background' && AppState.currentState !== 'inactive';
+    let updating = false;
+    let failures = 0;
+    let nextAt = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const schedule = (delay: number) => {
+      clearTimeout(timer);
+      if (!cancelled && active) timer = setTimeout(update, delay);
+    };
     const update = async () => {
-      if (gate.current || cancelled) return;
+      if (cancelled || !active || updating) return;
+      if (gate.current || Date.now() < nextAt) {
+        schedule(Math.max(1000, nextAt - Date.now()));
+        return;
+      }
+      updating = true;
       try {
-        await client.verifyDeployment();
-        if (!cancelled) await refresh();
+        await refresh();
+        failures = 0;
       } catch (e) {
-        if (!cancelled) {
+        failures++;
+        if (!cancelled && walletRef.current === wallet) {
           setStale(true);
-          console.warn('ROUND_REFRESH_ERROR', e instanceof Error ? e.stack : String(e));
-          setError(userMessage(e));
+          console.warn('ROUND_REFRESH_ERROR', userMessage(e));
+          if (loadedOwner.current === wallet) {
+            setRefreshNotice(
+              'Showing your last loaded balances and rounds. Refresh is delayed; we’ll retry automatically.',
+            );
+          } else {
+            setError(userMessage(e));
+          }
         }
+      } finally {
+        updating = false;
+        const delay = Math.min(120_000, 30_000 * 2 ** failures);
+        nextAt = Date.now() + delay;
+        schedule(delay);
       }
     };
     void update();
-    const timer = setInterval(update, 20_000);
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void update();
+      active = state === 'active';
+      if (active) void update();
+      else clearTimeout(timer);
     });
     return () => {
       cancelled = true;
-      clearInterval(timer);
+      clearTimeout(timer);
       subscription.remove();
     };
   }, [enabled, client, wallet, refresh]);
@@ -121,6 +187,8 @@ export function useDevnet(wallet: string | null, enabled: boolean) {
     setBusy(true);
     setError('');
     try {
+      // Finish any existing read before submitting or refreshing after a payment.
+      await refreshing.current?.catch(() => {});
       return await action();
     } finally {
       gate.current = false;
@@ -144,11 +212,21 @@ export function useDevnet(wallet: string | null, enabled: boolean) {
     return sendInstructions(client.connection, wallet, instructions, label, remember, setStatus);
   };
   async function afterConfirmed(
-    result: { signature: string; id: string },
+    result: { signature: string; id: string; round?: Round },
     action: ConfirmedAction,
   ) {
     setLastSignature(result.signature);
     setStale(true);
+    let notificationWarning = '';
+    try {
+      await notifyConfirmed(action, result.id, result.signature);
+      if ((action === 'create' || action === 'join') && client && wallet) {
+        await scheduleReminders(result.round ?? (await client.fetchRound(result.id, wallet)));
+      }
+    } catch {
+      notificationWarning =
+        'Transaction confirmed. To enable timely alerts, allow notifications and precise reminders in Reminder timing settings, then tap Enable reminders inside your ROUND.';
+    }
     try {
       await refresh();
     } catch {
@@ -156,35 +234,43 @@ export function useDevnet(wallet: string | null, enabled: boolean) {
         'Transaction confirmed. Balances could not be refreshed yet; refresh before continuing.',
       );
     }
-    let notificationWarning = '';
-    try {
-      await notifyConfirmed(action, result.id, result.signature);
-      if ((action === 'create' || action === 'join') && client && wallet) {
-        await scheduleReminders(await client.fetchRound(result.id, wallet));
-      }
-    } catch {
-      notificationWarning =
-        'Your transaction succeeded, but phone alerts could not be enabled. Allow ROUND notifications in phone settings, then tap Enable reminders inside your ROUND.';
-    }
     return { ...result, notificationWarning };
   }
 
   return {
     configured: !!client,
+    roundsLoading: !!wallet && fetchingOwner === wallet && roundsOwner !== wallet,
+    roundsUnavailable: !!wallet && roundsOwner !== wallet,
+    balancesLoading: !!wallet && fetchingOwner === wallet && (dataOwner !== wallet || !balances),
     rounds: dataOwner === wallet ? rounds : [],
     balances: dataOwner === wallet ? balances : null,
     pending,
     busy,
     status,
     error,
+    refreshNotice,
     offset,
     lastSignature,
+    readinessMessage: !wallet
+      ? 'Connect your wallet in Home or You before submitting.'
+      : !client
+        ? 'ROUND is not configured. Please update the app.'
+        : !restored
+          ? 'Checking your last transaction…'
+          : pending
+            ? 'Check your pending transaction before sending another payment.'
+            : busy
+              ? status || 'Finishing your wallet request…'
+              : stale || dataOwner !== wallet
+                ? error ||
+                  refreshNotice ||
+                  'Loading your balances and rounds. You can fill in this form while we finish.'
+                : '',
     canTransact:
       !!client && !!wallet && dataOwner === wallet && restored && !pending && !busy && !stale,
     refresh: () =>
       run(async () => {
         if (!client) throw new UserFacingError('The network is not configured.');
-        await client.verifyDeployment();
         await refresh();
       }),
     create: (input: CreateInput) =>

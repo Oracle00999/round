@@ -16,7 +16,7 @@ export function userMessage(error: unknown): string {
   if (/blockhash|expired/i.test(raw))
     return 'The wallet request took too long. Check the transaction status before trying again.';
   if (/429|too many requests|rate.limit/i.test(raw))
-    return 'Solana is receiving many requests right now. Wait a moment, then refresh.';
+    return 'Our connection to Solana is temporarily limiting requests. Wait a moment, then try again.';
   if (/network|fetch|timeout|timed out|ECONN|ENOTFOUND|socket|503|502/i.test(raw))
     return 'We couldn’t reach Solana. Check your internet connection, then refresh. If you already approved a payment, check its status before trying again.';
   if (/invalid public key|non-base58/i.test(raw))

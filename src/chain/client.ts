@@ -1,4 +1,5 @@
 import { GENESIS, NETWORK, IS_MAINNET, MAINNET_MINTS, RPC_URL } from './network';
+import { pacedRpcFetch } from './rpcFetch';
 import { UserFacingError } from '../services/errors';
 import { BN, utils } from '@coral-xyz/anchor';
 import { Buffer } from 'buffer';
@@ -42,11 +43,18 @@ export function configuredClient(): RoundClient | null {
   const bond = process.env.EXPO_PUBLIC_SKR_MINT;
   if (!program || !savings || !bond) return null;
   try {
-    return new RoundClient(new Connection(RPC_URL, 'confirmed'), {
-      programId: new PublicKey(program),
-      savingsMint: new PublicKey(IS_MAINNET ? MAINNET_MINTS.savings : savings),
-      bondMint: new PublicKey(IS_MAINNET ? MAINNET_MINTS.bond : bond),
-    });
+    return new RoundClient(
+      new Connection(RPC_URL, {
+        commitment: 'confirmed',
+        disableRetryOnRateLimit: true,
+        fetch: pacedRpcFetch((url, options) => fetch(url, options)),
+      }),
+      {
+        programId: new PublicKey(program),
+        savingsMint: new PublicKey(IS_MAINNET ? MAINNET_MINTS.savings : savings),
+        bondMint: new PublicKey(IS_MAINNET ? MAINNET_MINTS.bond : bond),
+      },
+    );
   } catch {
     return null;
   }
@@ -98,7 +106,23 @@ export class RoundClient {
     private readonly expectedGenesis = GENESIS[NETWORK],
   ) {}
 
-  async verifyDeployment() {
+  private verifiedAt = 0;
+  private verification: Promise<void> | null = null;
+
+  async verifyDeployment(force = true): Promise<void> {
+    if (this.verification) return this.verification;
+    if (!force && this.verifiedAt && Date.now() - this.verifiedAt < 300_000) return;
+    const work = this.checkDeployment();
+    this.verification = work;
+    try {
+      await work;
+      this.verifiedAt = Date.now();
+    } finally {
+      this.verification = null;
+    }
+  }
+
+  private async checkDeployment() {
     if (
       this.expectedGenesis === GENESIS['mainnet-beta'] &&
       (this.config.savingsMint.toBase58() !== MAINNET_MINTS.savings ||
@@ -187,6 +211,15 @@ export class RoundClient {
     const account = await this.connection.getAccountInfo(key, 'confirmed');
     if (!account)
       throw new UserFacingError('This ROUND was not found on this network. Check the invitation.');
+    return this.fetchRoundMembers(key, account, viewer);
+  }
+
+  private async fetchRoundMembers(
+    key: PublicKey,
+    account: AccountInfo<Buffer>,
+    viewer: string,
+  ): Promise<Round> {
+    const id = key.toBase58();
     const r = this.decodeRound(key, account);
     const records = await this.connection.getProgramAccounts(this.config.programId, {
       commitment: 'confirmed',
@@ -243,13 +276,17 @@ export class RoundClient {
       ),
     ];
     const rounds: Round[] = [];
-    // Small batches keep public RPC usage reasonable as a user's history grows.
-    for (let i = 0; i < ids.length; i += 4)
-      rounds.push(
-        ...(await Promise.all(
-          ids.slice(i, i + 4).map((id) => this.fetchRound(id, owner.toBase58())),
-        )),
-      );
+    // Fetch round headers in one RPC call per 100 accounts, rather than one per round.
+    // Read memberships sequentially to avoid a burst of expensive program scans.
+    for (let i = 0; i < ids.length; i += 100) {
+      const keys = ids.slice(i, i + 100).map((id) => new PublicKey(id));
+      const accounts = await this.connection.getMultipleAccountsInfo(keys, 'confirmed');
+      for (let j = 0; j < keys.length; j++) {
+        const account = accounts[j];
+        if (!account) throw new UserFacingError('A ROUND could not be loaded. Please refresh.');
+        rounds.push(await this.fetchRoundMembers(keys[j], account, owner.toBase58()));
+      }
+    }
     return rounds.sort((a, b) => b.startsAt - a.startsAt);
   }
 
@@ -270,7 +307,11 @@ export class RoundClient {
       ],
       'Create and join ROUND',
     );
-    return { signature, id: address.toBase58() };
+    return {
+      signature,
+      id: address.toBase58(),
+      round: { ...input, id: address.toBase58(), creator: owner.toBase58(), members: [] } as Round,
+    };
   }
 
   async act(
@@ -315,6 +356,6 @@ export class RoundClient {
           ? 'Contribute savings'
           : 'Withdraw savings',
     );
-    return { signature, id };
+    return { signature, id, round };
   }
 }

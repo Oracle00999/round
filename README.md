@@ -38,7 +38,7 @@ Required: Android SDK, Java, connected Android device or emulator, and an MWA-co
 
 ## Build an installable APK
 
-The current test build is `artifacts/round-v0.4.6-devnet-arm64.apk`. APKs are excluded from source control.
+The current test build is `artifacts/round-v0.4.15-devnet-arm64.apk`. APKs are excluded from source control.
 
 Use Java 17 and set `ANDROID_HOME` to your SDK location:
 
